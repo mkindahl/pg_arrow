@@ -1,0 +1,4 @@
+comment = 'In-memory table access method'
+default_version = '0.1'
+module_pathname = '$libdir/arrow'
+relocatable = true
