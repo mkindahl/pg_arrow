@@ -39,6 +39,42 @@ static void IncreaseLength(struct ArrowArray* array, int incr) {
   *data->plength += incr;
 }
 
+static bool ArrowArrayIsNull(ArrowArray* array, int64 index) {
+  int8* ptr = array->buffers[0];
+  Assert(index < array->length);
+  return ptr[index / 8] & (1 << (index % 8));
+}
+
+#define MAKE_ARRAY_GETTER(PFX, TYPE)                                      \
+  static NullableDatum ArrowArrayGet##PFX(ArrowArray* array, int index) { \
+    TYPE* ptr = array->buffers[1];                                        \
+    NullableDatum result = {0};                                           \
+    if (ArrowArrayIsNull(array, index))                                   \
+      result.isnull = true;                                               \
+    else                                                                  \
+      result.value = PFX##GetDatum(ptr[index]);                           \
+    return result;                                                        \
+  }
+
+MAKE_ARRAY_GETTER(Int16, int16);
+MAKE_ARRAY_GETTER(Int32, int32);
+MAKE_ARRAY_GETTER(Int64, int64);
+MAKE_ARRAY_GETTER(Float4, float4);
+MAKE_ARRAY_GETTER(Float8, float8);
+
+#define MAKE_ARRAY_APPENDER(PFX, TYPE)                                \
+  static void ArrowArrayAppend##PFX(ArrowArray* array, Datum datum) { \
+    TYPE* ptr = array->buffers[1];                                    \
+    ptr[array->length] = DatumGet##PFX(datum);                        \
+    IncreaseLength(array, 1);                                         \
+  }
+
+MAKE_ARRAY_APPENDER(Float4, float4);
+MAKE_ARRAY_APPENDER(Float8, float8);
+MAKE_ARRAY_APPENDER(Int16, int16);
+MAKE_ARRAY_APPENDER(Int32, int32);
+MAKE_ARRAY_APPENDER(Int64, int64);
+
 static HTAB* ArrowArrayCache;
 static MemoryContext ArrowArrayCacheMemoryContext;
 
@@ -64,30 +100,6 @@ void ArrowArrayAppendNull(ArrowArray* array) {
   DEBUG_LEAVE("length: %lu", array->length);
 }
 
-static bool ArrowArrayIsNull(ArrowArray* array, int64 index) {
-  int8* ptr = array->buffers[0];
-  Assert(index < array->length);
-  return ptr[index / 8] & (1 << (index % 8));
-}
-
-static void ArrowArrayAppendInt16(ArrowArray* array, Datum datum) {
-  int16* ptr = array->buffers[1];
-  ptr[array->length] = DatumGetInt16(datum);
-  IncreaseLength(array, 1);
-}
-
-static void ArrowArrayAppendInt32(ArrowArray* array, Datum datum) {
-  int32* ptr = array->buffers[1];
-  ptr[array->length] = DatumGetInt32(datum);
-  IncreaseLength(array, 1);
-}
-
-static void ArrowArrayAppendInt64(ArrowArray* array, Datum datum) {
-  int64* ptr = array->buffers[1];
-  ptr[array->length] = DatumGetInt64(datum);
-  IncreaseLength(array, 1);
-}
-
 void ArrowArrayAppendDatum(ArrowArray* array, Form_pg_attribute attr,
                            Datum datum) {
   DEBUG_ENTER("length: %lu, attr: %s", array->length, NameStr(attr->attname));
@@ -104,39 +116,16 @@ void ArrowArrayAppendDatum(ArrowArray* array, Form_pg_attribute attr,
     case INT2OID:
       ArrowArrayAppendInt16(array, datum);
       break;
+
+    case FLOAT4OID:
+      ArrowArrayAppendFloat4(array, datum);
+      break;
+
+    case FLOAT8OID:
+      ArrowArrayAppendFloat8(array, datum);
+      break;
   }
   DEBUG_LEAVE("length: %lu", array->length);
-}
-
-static NullableDatum ArrowArrayGetInt16(ArrowArray* array, int index) {
-  int16* ptr = array->buffers[1];
-  NullableDatum result = {0};
-  if (ArrowArrayIsNull(array, index)) {
-    result.isnull = true;
-  } else {
-    result.value = Int16GetDatum(ptr[index]);
-  }
-  return result;
-}
-
-static NullableDatum ArrowArrayGetInt32(ArrowArray* array, int index) {
-  int32* ptr = array->buffers[1];
-  NullableDatum result = {0};
-  if (ArrowArrayIsNull(array, index))
-    result.isnull = true;
-  else
-    result.value = Int32GetDatum(ptr[index]);
-  return result;
-}
-
-static NullableDatum ArrowArrayGetInt64(ArrowArray* array, int index) {
-  int64* ptr = array->buffers[1];
-  NullableDatum result = {0};
-  if (ArrowArrayIsNull(array, index))
-    result.isnull = true;
-  else
-    result.value = Int64GetDatum(ptr[index]);
-  return result;
 }
 
 /**
@@ -196,6 +185,12 @@ NullableDatum ArrowArrayGetDatum(ArrowArray* array, Form_pg_attribute attr,
 
     case INT2OID:
       return ArrowArrayGetInt16(array, index);
+
+    case FLOAT4OID:
+      return ArrowArrayGetFloat4(array, index);
+
+    case FLOAT8OID:
+      return ArrowArrayGetFloat8(array, index);
 
     default:
       elog(ERROR, "type %d for attribute %s not handled", attr->atttypid,

@@ -1,13 +1,25 @@
 create extension arrow;
-create table test_heap (a int, b int);
-create table test_arrow (like test_heap) using arrow;
-insert into test_heap select a, 2 * a from generate_series(0,10) as a;
-insert into test_arrow select * from test_heap;
+create table test_heap_int(a int, b int);
+create table test_arrow_int(like test_heap_int) using arrow;
+insert into test_heap_int select a, 2 * a from generate_series(0,10) as a;
+insert into test_arrow_int select * from test_heap_int;
 select *
-from test_arrow full join test_heap using (a,b)
+from test_arrow_int full join test_heap_int using (a,b)
 where a is null or b is null;
  a | b 
 ---+---
 (0 rows)
 
-drop table test_arrow, test_heap;
+create table test_heap_float(a float, b float);
+create table test_arrow_float(like test_heap_float) using arrow;
+insert into test_heap_float select a, 2 * a from generate_series(1.1,2.2) as a;
+insert into test_arrow_float select * from test_heap_float;
+select *
+from test_arrow_float full join test_heap_float using (a,b)
+where a is null or b is null;
+ a | b 
+---+---
+(0 rows)
+
+drop table test_arrow_int, test_heap_int;
+drop table test_arrow_float, test_heap_float;
