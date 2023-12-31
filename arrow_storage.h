@@ -11,12 +11,12 @@
 
 #include <postgres.h>
 
-#include <utils/rel.h>
-
 #include <limits.h>
 #include <semaphore.h>
 
 #include "arrow_c_data_interface.h"
+
+#include <utils/rel.h>
 
 /**
  * Key for arrow arrays.
@@ -40,6 +40,10 @@ typedef struct ArrowSegmentKey {
  *
  * In particular, we do not store pointers in this structure and
  * rather offsets relative the start of the arrow segment.
+ *
+ * For now, we store the offsets explicitly named, but we might well store all
+ * buffer offsets later and mimic the structure of the ArrowArray structure, but
+ * using offsets relative start of segment instead.
  */
 typedef struct ArrowSegment {
   /** Length of the array, in number of elements */
@@ -51,8 +55,8 @@ typedef struct ArrowSegment {
   /** Offset to validity buffer relative to start of segment. */
   size_t validity_buffer_offset;
 
-  /** Offset to buffer for data, either fixed-size or variable size, relative to
-   * start of segment. */
+  /** Offset to buffer for data, either fixed-size or variable size,
+   * relative to start of segment. */
   size_t data_buffer_offset;
 
   /** Offset to buffer for offsets used for variable length data

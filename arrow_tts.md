@@ -55,6 +55,35 @@ We only use the first two types: the "Primitive" and the "Variable
 Binary" layouts. For this reason, the implementation is not using the
 children arrays, nor the dictionary.
 
+## Shared Memory Storage
+
+Since the `ArrowArray` structure contains pointers to memory, we need
+to have a separate representation of the data in the shared memory
+storage, which is named `ArrowSegment`.
+
+There are a few reasons to why we need a separate structure for the
+data stored in the memory segment:
+
+1. Raw pointers cannot be used in shared memory segments since the
+   start of the shared memory segment will be mapped to different
+   addresses in different processes. Instead we store offsets to the
+   buffers in the shared memory segment.
+2. We are using a separate `ArrowArray` structure for the in-memory
+   storage that is local to each process. This allows us to use normal
+   Arrow libraries for accessing the data.
+3. The length in the `ArrowArray` structure need to be updated at the
+   same time as the segment length, and `ArrowArray` length cannot
+   point to another length that is being updated at the same
+   time. Indirectly, each `ArrowArray` instance is assumed to be the
+   sole owner of the data.
+
+The storage of the data is otherwise similar to the `ArrowArray`
+structure:
+
+- The validity bitmap is stored in the same way.
+- The data buffer is stored in the same way.
+- The offset buffer is stored in the same way.
+
 ## Shared Memory Naming
 
 The table access method relies on using shared memory *only*, that is,
@@ -63,8 +92,9 @@ access at all (except those that are part of the virtual memory
 implementation in Linux).
 
 The shared memory blocks are named `arrow.<dbid>.<relid>.<attno>` and
-each block contains the `ArrowArray` headers structure and all the
-buffers for the array. Since we are only using the two first formats, we 
+each block contains the `ArrowSegment` headers structure and all the
+buffers for the array. Since we are only using the two first formats,
+we
 
     +------------------------+
     |    ArrowArray header   |
